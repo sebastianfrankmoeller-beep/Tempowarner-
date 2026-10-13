@@ -25,6 +25,7 @@ import android.view.WindowManager
 /**
  * Dauerhafter Vordergrunddienst:
  *  - misst per GPS die Geschwindigkeit,
+ *  - erkennt (optional) das Tempolimit der Straße aus OpenStreetMap-Daten,
  *  - zeigt bei Überschreitung einen roten Leuchtrahmen als Overlay,
  *  - blendet den Rahmen aus, solange Google Maps im Vordergrund ist.
  */
@@ -47,6 +48,9 @@ class SpeedService : Service(), LocationListener {
     private lateinit var wm: WindowManager
     private lateinit var lm: LocationManager
     private val handler = Handler(Looper.getMainLooper())
+
+    private val limits = LimitProvider()
+    private var detectedLimit: Int? = null   // null = unbekannt, NO_LIMIT = kein Limit
 
     private var started = false
     private var overlay: GlowView? = null
@@ -120,6 +124,7 @@ class SpeedService : Service(), LocationListener {
             lm.removeUpdates(this)
         } catch (_: Exception) {
         }
+        limits.close()
         hideOverlay()
         started = false
         running = false
@@ -134,6 +139,18 @@ class SpeedService : Service(), LocationListener {
         if (!location.hasSpeed()) return
         speedKmh = location.speed * 3.6f
         lastFixMs = SystemClock.elapsedRealtime()
+
+        if (Prefs.auto(this)) {
+            limits.fetchIfNeeded(location.latitude, location.longitude)
+            detectedLimit = limits.limitFor(
+                location.latitude,
+                location.longitude,
+                if (location.hasBearing()) location.bearing else null,
+                speedKmh
+            )
+        } else {
+            detectedLimit = null
+        }
         evaluate()
     }
 
@@ -149,13 +166,16 @@ class SpeedService : Service(), LocationListener {
 
     private fun evaluate() {
         val now = SystemClock.elapsedRealtime()
-        val limit = Prefs.limit(this)
+        val auto = Prefs.auto(this)
+        val detected = if (auto) detectedLimit else null
+        val noLimit = detected == LimitProvider.NO_LIMIT
+        val limit = if (detected != null && !noLimit) detected else Prefs.limit(this)
         val threshold = limit + Prefs.tolerance(this)
         val gpsFresh = now - lastFixMs < GPS_TIMEOUT_MS
 
         // 0,5 km/h Hysterese gegen Flackern direkt an der Schwelle
         warning = when {
-            !gpsFresh -> false
+            !gpsFresh || noLimit -> false
             warning -> speedKmh >= threshold - 0.5f
             else -> speedKmh >= threshold
         }
@@ -163,10 +183,16 @@ class SpeedService : Service(), LocationListener {
         val wantGlow = warning || now < testUntil
         if (wantGlow && !mapsInFront) showOverlay() else hideOverlay()
 
+        val limitText = when {
+            noLimit -> "kein Limit"
+            detected != null -> "Limit $limit (erkannt)"
+            auto -> "Limit $limit (Straße unbekannt)"
+            else -> "Limit $limit"
+        }
         val text = when {
             !Perms.canOverlay(this) -> "Overlay-Berechtigung fehlt"
-            !gpsFresh -> "Kein GPS-Signal · Limit $limit"
-            else -> "${Math.round(speedKmh)} km/h · Limit $limit" +
+            !gpsFresh -> "Kein GPS-Signal · $limitText"
+            else -> "${Math.round(speedKmh)} km/h · $limitText" +
                 if (mapsInFront) " · Maps aktiv" else ""
         }
         if (text != lastNotifText) {

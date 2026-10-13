@@ -6,15 +6,31 @@ des Limits einen **roten, pulsierenden Leuchtrahmen** am Bildschirmrand zeigt �
 - Läuft als Vordergrunddienst mit eigener Statusbenachrichtigung (wird nicht vom System beendet).
 - Der Rahmen ist ein schwebendes Fenster über allen Apps (nicht anklickbar, Touch geht durch).
 - Ist **Google Maps** im Vordergrund, wird der Rahmen automatisch ausgeblendet.
-- Limit und Toleranz (Standard: 50 km/h, Warnung ab +1 km/h) stellst du in der App ein.
+- **Tempolimit wird automatisch erkannt** (siehe unten), alternativ stellst du es manuell ein.
+- Toleranz (Standard: Warnung ab +1 km/h über dem Limit) stellst du in der App ein.
 - Button „Leuchtrahmen 3 s testen“ zum Ausprobieren, ohne zu fahren.
+
+## Automatische Limit-Erkennung
+
+Die App lädt per Internet die Straßen rund um deine Position aus **OpenStreetMap** (Overpass-API)
+und sucht an jedem GPS-Punkt die Straße, die zu Position und Fahrtrichtung passt. Deren Eintrag
+`maxspeed` ist das erkannte Limit. Es steht in der Benachrichtigung („Limit 50 (erkannt)“).
+
+- Es wird nur etwa alle 700 m Fahrstrecke neu geladen (Zwischenspeicher, wenig Datenvolumen).
+- Ein neues Limit gilt erst, wenn es 3 Sekunden in Folge erkannt wurde (kein Flackern an Kreuzungen).
+- Steht für eine Straße kein Limit in den Daten oder ist kein Netz da, gilt dein **manuelles Limit**
+  als Rückfall (Benachrichtigung: „Straße unbekannt“).
+- Steht für eine Straße ausdrücklich „kein Limit“ (z. B. Autobahn ohne Beschränkung), gibt es keine Warnung.
+- Nicht erfasst werden Baustellen, Wechselverkehrszeichen und zeitabhängige Limits.
+- Die Automatik lässt sich in der App ausschalten, dann gilt immer das manuelle Limit.
+
+Kartendaten: © OpenStreetMap-Mitwirkende (ODbL).
 
 ## Auf GitHub bauen
 
-1. Inhalt dieses Ordners in ein GitHub-Repository hochladen (inkl. `.github/` und `app/debug.keystore`).
-2. Bei jedem Push startet automatisch der Workflow **Build APK** (Reiter *Actions*).
+1. Bei jedem Push startet automatisch der Workflow **Build APK** (Reiter *Actions*).
    Manuell geht es auch über *Run workflow*.
-3. Nach ca. 2–4 Minuten im fertigen Lauf unter **Artifacts** den Eintrag `Tempowarner-APK`
+2. Nach ca. 2–4 Minuten im fertigen Lauf unter **Artifacts** den Eintrag `Tempowarner-APK`
    herunterladen, entpacken, `app-debug.apk` aufs Handy kopieren und installieren.
 
 Updates: Weil alle Builds mit demselben Debug-Schlüssel (`app/debug.keystore`) signiert sind und die
@@ -33,14 +49,15 @@ Hinweise:
   Dann: *Einstellungen → Apps → Tempowarner → ⋮ (oben rechts) → Eingeschränkte Einstellungen zulassen*.
 - Damit der Dienst zuverlässig weiterläuft: *Einstellungen → Apps → Tempowarner → Akku → Unbeschränkt*.
 - Die GPS-Geschwindigkeit ist genauer als der Tacho vieler Autos und weicht daher oft nach unten ab.
-  Die App ist eine Zusatzhilfe, der Blick auf den Tacho bleibt maßgeblich.
+  Die App ist eine Zusatzhilfe, der Blick auf den Tacho und die Schilder bleibt maßgeblich.
 
 ## Projektaufbau
 
 | Datei | Aufgabe |
 |---|---|
 | `SpeedService.kt` | Vordergrunddienst: GPS, Schwellenwert, Overlay, Maps-Erkennung, Benachrichtigung |
+| `LimitProvider.kt` | Tempolimit aus OpenStreetMap: Abruf, Zwischenspeicher, Straßenzuordnung |
 | `GlowView.kt` | Zeichnet den roten Leuchtrahmen |
 | `MainActivity.kt` | Einstellungen, Berechtigungen, Start/Stopp |
-| `Util.kt` | Gespeichertes Limit, Berechtigungsprüfungen |
+| `Util.kt` | Gespeicherte Einstellungen, Berechtigungsprüfungen |
 | `.github/workflows/build.yml` | Automatischer Build bei jedem Push |

@@ -15,6 +15,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 
 class MainActivity : Activity() {
@@ -46,7 +47,16 @@ class MainActivity : Activity() {
         })
 
         // --- Einstellungen
-        root.addView(label("Tempolimit (km/h)"))
+        root.addView(Switch(this).apply {
+            text = "Tempolimit automatisch erkennen (OpenStreetMap, braucht Internet)"
+            isChecked = Prefs.auto(this@MainActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setAuto(this@MainActivity, checked) }
+        })
+        root.addView(TextView(this).apply {
+            text = "Ist für eine Straße kein Limit hinterlegt, gilt das manuelle Limit unten."
+            setPadding(0, dp(4), 0, dp(8))
+        })
+        root.addView(label("Manuelles Tempolimit bzw. Rückfall (km/h)"))
         root.addView(numberField(Prefs.limit(this)) { v ->
             Prefs.setLimit(this, v.coerceIn(5, 300))
         })
@@ -100,6 +110,14 @@ class MainActivity : Activity() {
             startService(Intent(this, SpeedService::class.java).setAction(SpeedService.ACTION_TEST))
         }
         root.addView(btnTest)
+
+        // Quellenhinweis (Pflicht bei Nutzung von OpenStreetMap-Daten)
+        root.addView(TextView(this).apply {
+            text = "Tempolimit-Daten: © OpenStreetMap-Mitwirkende (ODbL), " +
+                "abgerufen über die Overpass-API. Die Daten können unvollständig oder veraltet sein."
+            textSize = 12f
+            setPadding(0, dp(24), 0, 0)
+        })
     }
 
     override fun onResume() {
