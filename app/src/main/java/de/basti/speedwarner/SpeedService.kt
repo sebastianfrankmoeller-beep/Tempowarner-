@@ -20,14 +20,19 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
 
 /**
  * Dauerhafter Vordergrunddienst:
  *  - misst per GPS die Geschwindigkeit,
  *  - erkennt (optional) das Tempolimit der Straße aus OpenStreetMap-Daten,
- *  - zeigt bei Überschreitung einen roten Leuchtrahmen als Overlay,
- *  - blendet den Rahmen aus, solange Google Maps im Vordergrund ist.
+ *  - zeigt ein kleines, verschiebbares Geschwindigkeits-Fenster über anderen Apps,
+ *  - lässt bei Überschreitung den Bildschirmrand rot leuchten,
+ *  - blendet das Geschwindigkeits-Fenster aus, solange Google Maps im Vordergrund ist
+ *    (der Leuchtrahmen bleibt auch dort aktiv).
  */
 class SpeedService : Service(), LocationListener {
 
@@ -53,12 +58,14 @@ class SpeedService : Service(), LocationListener {
     private var detectedLimit: Int? = null   // null = unbekannt, NO_LIMIT = kein Limit
 
     private var started = false
-    private var overlay: GlowView? = null
+    private var overlay: GlowView? = null          // Leuchtrahmen
+    private var chip: SpeedChip? = null            // Geschwindigkeits-Fenster
+    private var chipParams: WindowManager.LayoutParams? = null
 
     private var speedKmh = 0f
     private var lastFixMs = 0L          // SystemClock.elapsedRealtime() des letzten GPS-Fixes
     private var warning = false         // Geschwindigkeit über Schwelle (mit Hysterese)
-    private var testUntil = 0L          // erzwingt kurz den Rahmen (Test-Button)
+    private var testUntil = 0L          // erzwingt kurz Rahmen und rotes Fenster (Test-Button)
 
     private var foregroundPkg: String? = null
     private var lastUsageQuery = 0L
@@ -126,6 +133,7 @@ class SpeedService : Service(), LocationListener {
         }
         limits.close()
         hideOverlay()
+        hideChip()
         started = false
         running = false
         super.onDestroy()
@@ -179,9 +187,26 @@ class SpeedService : Service(), LocationListener {
             warning -> speedKmh >= threshold - 0.5f
             else -> speedKmh >= threshold
         }
+        val alarm = warning || now < testUntil
 
-        val wantGlow = warning || now < testUntil
-        if (wantGlow && !mapsInFront) showOverlay() else hideOverlay()
+        // Leuchtrahmen: immer bei Überschreitung, auch in Google Maps
+        if (alarm) showOverlay() else hideOverlay()
+
+        // Geschwindigkeits-Fenster: über allen Apps außer Google Maps
+        if (Prefs.chip(this) && Perms.canOverlay(this) && !mapsInFront) {
+            val speedText = if (gpsFresh) Math.round(speedKmh).toString() else "--"
+            val sub = when {
+                !gpsFresh -> "kein GPS"
+                noLimit -> "km/h · kein Limit"
+                detected != null -> "km/h · Limit $limit"
+                auto -> "km/h · Limit $limit ?"
+                else -> "km/h · Limit $limit"
+            }
+            showChip()
+            chip?.update(speedText, sub, alarm)
+        } else {
+            hideChip()
+        }
 
         val limitText = when {
             noLimit -> "kein Limit"
@@ -229,7 +254,7 @@ class SpeedService : Service(), LocationListener {
         }
     }
 
-    // ------------------------------------------------------------ Overlay
+    // --------------------------------------------------- Overlay: Leuchtrahmen
 
     private fun showOverlay() {
         if (!Perms.canOverlay(this)) return
@@ -245,6 +270,9 @@ class SpeedService : Service(), LocationListener {
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT
             )
+            // Android 12+ blockiert Berührungen durch Overlays mit Deckkraft über 0,8.
+            // Mit 0,8 bleiben die Apps unter dem Rahmen (z. B. Google Maps) bedienbar.
+            lp.alpha = 0.8f
             if (Build.VERSION.SDK_INT >= 28) {
                 lp.layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -267,6 +295,76 @@ class SpeedService : Service(), LocationListener {
         } catch (_: Exception) {
         }
         overlay = null
+    }
+
+    // ----------------------------------------- Overlay: Geschwindigkeits-Fenster
+
+    private fun showChip() {
+        if (chip != null) return
+        val view = SpeedChip(this)
+        val d = resources.displayMetrics.density
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        lp.gravity = Gravity.TOP or Gravity.START
+        lp.x = Prefs.chipX(this).takeIf { it != Int.MIN_VALUE } ?: (16 * d).toInt()
+        lp.y = Prefs.chipY(this).takeIf { it != Int.MIN_VALUE } ?: (120 * d).toInt()
+
+        // Fenster mit dem Finger verschieben, Position wird gemerkt
+        view.setOnTouchListener(object : View.OnTouchListener {
+            private var startX = 0
+            private var startY = 0
+            private var downX = 0f
+            private var downY = 0f
+
+            override fun onTouch(v: View, e: MotionEvent): Boolean {
+                val params = chipParams ?: return false
+                when (e.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        startX = params.x
+                        startY = params.y
+                        downX = e.rawX
+                        downY = e.rawY
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dm = resources.displayMetrics
+                        params.x = (startX + (e.rawX - downX).toInt())
+                            .coerceIn(0, (dm.widthPixels - v.width).coerceAtLeast(0))
+                        params.y = (startY + (e.rawY - downY).toInt())
+                            .coerceIn(0, (dm.heightPixels - v.height).coerceAtLeast(0))
+                        try {
+                            wm.updateViewLayout(v, params)
+                        } catch (_: Exception) {
+                        }
+                    }
+                    MotionEvent.ACTION_UP -> Prefs.setChipPos(this@SpeedService, params.x, params.y)
+                }
+                return true
+            }
+        })
+
+        try {
+            wm.addView(view, lp)
+            chip = view
+            chipParams = lp
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun hideChip() {
+        val v = chip ?: return
+        try {
+            wm.removeView(v)
+        } catch (_: Exception) {
+        }
+        chip = null
+        chipParams = null
     }
 
     // ------------------------------------------------------- Benachrichtigung

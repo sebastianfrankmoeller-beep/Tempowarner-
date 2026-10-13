@@ -48,6 +48,16 @@ class MainActivity : Activity() {
 
         // --- Einstellungen
         root.addView(Switch(this).apply {
+            text = "Geschwindigkeit als kleines Fenster anzeigen"
+            isChecked = Prefs.chip(this@MainActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setChip(this@MainActivity, checked) }
+        })
+        root.addView(TextView(this).apply {
+            text = "Das Fenster liegt über anderen Apps und lässt sich mit dem Finger verschieben. " +
+                "In Google Maps wird es ausgeblendet, dort leuchtet nur der Bildschirmrand."
+            setPadding(0, dp(4), 0, dp(16))
+        })
+        root.addView(Switch(this).apply {
             text = "Tempolimit automatisch erkennen (OpenStreetMap, braucht Internet)"
             isChecked = Prefs.auto(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> Prefs.setAuto(this@MainActivity, checked) }

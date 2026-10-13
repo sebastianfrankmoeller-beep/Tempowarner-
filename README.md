@@ -5,7 +5,10 @@ des Limits einen **roten, pulsierenden Leuchtrahmen** am Bildschirmrand zeigt �
 
 - Läuft als Vordergrunddienst mit eigener Statusbenachrichtigung (wird nicht vom System beendet).
 - Der Rahmen ist ein schwebendes Fenster über allen Apps (nicht anklickbar, Touch geht durch).
-- Ist **Google Maps** im Vordergrund, wird der Rahmen automatisch ausgeblendet.
+- Zusätzlich zeigt ein **kleines Geschwindigkeits-Fenster** über allen Apps die aktuelle Geschwindigkeit
+  und das Limit. Es lässt sich mit dem Finger verschieben und wird bei Überschreitung rot.
+- Ist **Google Maps** im Vordergrund, wird das Geschwindigkeits-Fenster ausgeblendet; dort leuchtet
+  nur der Bildschirmrand.
 - **Tempolimit wird automatisch erkannt** (siehe unten), alternativ stellst du es manuell ein.
 - Toleranz (Standard: Warnung ab +1 km/h über dem Limit) stellst du in der App ein.
 - Button „Leuchtrahmen 3 s testen“ zum Ausprobieren, ohne zu fahren.

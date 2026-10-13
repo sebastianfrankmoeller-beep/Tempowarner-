@@ -19,6 +19,15 @@ object Prefs {
     /** Tempolimit automatisch aus OpenStreetMap erkennen (Standard: an). */
     fun auto(c: Context): Boolean = sp(c).getBoolean("auto", true)
 
+    /** Kleines Geschwindigkeits-Fenster über anderen Apps anzeigen (Standard: an). */
+    fun chip(c: Context): Boolean = sp(c).getBoolean("chip", true)
+    fun setChip(c: Context, v: Boolean) = sp(c).edit().putBoolean("chip", v).apply()
+
+    /** Gemerkte Position des Fensters (Pixel von links oben); Int.MIN_VALUE = noch nicht verschoben. */
+    fun chipX(c: Context): Int = sp(c).getInt("chipX", Int.MIN_VALUE)
+    fun chipY(c: Context): Int = sp(c).getInt("chipY", Int.MIN_VALUE)
+    fun setChipPos(c: Context, x: Int, y: Int) = sp(c).edit().putInt("chipX", x).putInt("chipY", y).apply()
+
     fun setLimit(c: Context, v: Int) = sp(c).edit().putInt("limit", v).apply()
     fun setTolerance(c: Context, v: Int) = sp(c).edit().putInt("tolerance", v).apply()
     fun setAuto(c: Context, v: Boolean) = sp(c).edit().putBoolean("auto", v).apply()
