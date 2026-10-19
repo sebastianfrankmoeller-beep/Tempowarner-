@@ -53,10 +53,19 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, checked -> Prefs.setChip(this@MainActivity, checked) }
         })
         root.addView(TextView(this).apply {
-            text = "Das Fenster liegt über anderen Apps und lässt sich mit dem Finger verschieben. " +
+            text = "Das Fenster liegt über anderen Apps. Mit einem Finger verschieben, am Dreieck unten " +
+                "rechts ziehen oder mit zwei Fingern spreizen, um die Größe zu ändern. " +
                 "In Google Maps wird es ausgeblendet, dort leuchtet nur der Bildschirmrand."
-            setPadding(0, dp(4), 0, dp(16))
+            setPadding(0, dp(4), 0, dp(8))
         })
+        root.addView(button("Fenster zurücksetzen (Größe und Position)") {
+            Prefs.setChipScale(this, 1f)
+            Prefs.setChipPos(this, Int.MIN_VALUE, Int.MIN_VALUE)
+            if (SpeedService.running) {
+                startService(Intent(this, SpeedService::class.java).setAction(SpeedService.ACTION_RESET_CHIP))
+            }
+        })
+        root.addView(TextView(this).apply { setPadding(0, 0, 0, dp(16)) })
         root.addView(Switch(this).apply {
             text = "Tempolimit automatisch erkennen (OpenStreetMap, braucht Internet)"
             isChecked = Prefs.auto(this@MainActivity)

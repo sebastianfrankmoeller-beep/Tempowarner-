@@ -28,6 +28,10 @@ object Prefs {
     fun chipY(c: Context): Int = sp(c).getInt("chipY", Int.MIN_VALUE)
     fun setChipPos(c: Context, x: Int, y: Int) = sp(c).edit().putInt("chipX", x).putInt("chipY", y).apply()
 
+    /** Gemerkte Größe des Fensters (Faktor 1,0 = Standard). */
+    fun chipScale(c: Context): Float = sp(c).getFloat("chipScale", 1f)
+    fun setChipScale(c: Context, v: Float) = sp(c).edit().putFloat("chipScale", v).apply()
+
     fun setLimit(c: Context, v: Int) = sp(c).edit().putInt("limit", v).apply()
     fun setTolerance(c: Context, v: Int) = sp(c).edit().putInt("tolerance", v).apply()
     fun setAuto(c: Context, v: Boolean) = sp(c).edit().putBoolean("auto", v).apply()

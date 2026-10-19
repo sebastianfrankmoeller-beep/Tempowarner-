@@ -22,6 +22,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 
@@ -39,6 +40,7 @@ class SpeedService : Service(), LocationListener {
     companion object {
         const val ACTION_STOP = "de.basti.speedwarner.STOP"
         const val ACTION_TEST = "de.basti.speedwarner.TEST"
+        const val ACTION_RESET_CHIP = "de.basti.speedwarner.RESET_CHIP"
 
         private const val CHANNEL_ID = "speedwarner_status"
         private const val NOTIF_ID = 1
@@ -96,6 +98,12 @@ class SpeedService : Service(), LocationListener {
             ACTION_STOP -> {
                 stopSelf()
                 return START_NOT_STICKY
+            }
+            ACTION_RESET_CHIP -> {
+                // Fenster neu aufbauen, es übernimmt dann die gespeicherten Standardwerte
+                hideChip()
+                if (started) evaluate()
+                return START_STICKY
             }
             ACTION_TEST -> {
                 testUntil = SystemClock.elapsedRealtime() + 3000
@@ -316,34 +324,77 @@ class SpeedService : Service(), LocationListener {
         lp.x = Prefs.chipX(this).takeIf { it != Int.MIN_VALUE } ?: (16 * d).toInt()
         lp.y = Prefs.chipY(this).takeIf { it != Int.MIN_VALUE } ?: (120 * d).toInt()
 
-        // Fenster mit dem Finger verschieben, Position wird gemerkt
+        view.setScale(Prefs.chipScale(this))
+
+        // Bedienung des Fensters:
+        //  - mit einem Finger verschieben,
+        //  - am Dreieck unten rechts ziehen oder mit zwei Fingern spreizen/zusammenziehen: Größe ändern.
+        // Position und Größe werden gemerkt.
+        val scaleDetector = ScaleGestureDetector(
+            this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    view.setScale(view.chipScale * detector.scaleFactor)
+                    return true
+                }
+            }
+        )
+
         view.setOnTouchListener(object : View.OnTouchListener {
             private var startX = 0
             private var startY = 0
             private var downX = 0f
             private var downY = 0f
+            private var startScale = 1f
+            private var startWidth = 1
+            private var resizing = false     // Ziehgriff unten rechts wird gezogen
+            private var gestureLocked = false // nach Zwei-Finger-Geste kein Verschieben bis alle Finger weg sind
 
             override fun onTouch(v: View, e: MotionEvent): Boolean {
                 val params = chipParams ?: return false
-                when (e.action) {
+                scaleDetector.onTouchEvent(e)
+
+                when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         startX = params.x
                         startY = params.y
                         downX = e.rawX
                         downY = e.rawY
+                        startScale = view.chipScale
+                        startWidth = v.width.coerceAtLeast(1)
+                        resizing = view.inGrip(e.x, e.y)
+                        gestureLocked = false
+                    }
+                    MotionEvent.ACTION_POINTER_DOWN -> {
+                        gestureLocked = true
+                        resizing = false
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        val dm = resources.displayMetrics
-                        params.x = (startX + (e.rawX - downX).toInt())
-                            .coerceIn(0, (dm.widthPixels - v.width).coerceAtLeast(0))
-                        params.y = (startY + (e.rawY - downY).toInt())
-                            .coerceIn(0, (dm.heightPixels - v.height).coerceAtLeast(0))
-                        try {
-                            wm.updateViewLayout(v, params)
-                        } catch (_: Exception) {
+                        if (scaleDetector.isInProgress || gestureLocked) return true
+                        if (resizing) {
+                            // Breite des Fensters folgt dem Finger, Größe skaliert mit
+                            val newWidth = (startWidth + (e.rawX - downX)).coerceAtLeast(1f)
+                            view.setScale(startScale * newWidth / startWidth)
+                        } else {
+                            val dm = resources.displayMetrics
+                            params.x = (startX + (e.rawX - downX).toInt())
+                                .coerceIn(0, (dm.widthPixels - v.width).coerceAtLeast(0))
+                            params.y = (startY + (e.rawY - downY).toInt())
+                                .coerceIn(0, (dm.heightPixels - v.height).coerceAtLeast(0))
+                            try {
+                                wm.updateViewLayout(v, params)
+                            } catch (_: Exception) {
+                            }
                         }
                     }
-                    MotionEvent.ACTION_UP -> Prefs.setChipPos(this@SpeedService, params.x, params.y)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (!gestureLocked && !resizing) {
+                            Prefs.setChipPos(this@SpeedService, params.x, params.y)
+                        }
+                        Prefs.setChipScale(this@SpeedService, view.chipScale)
+                        resizing = false
+                        gestureLocked = false
+                    }
                 }
                 return true
             }
