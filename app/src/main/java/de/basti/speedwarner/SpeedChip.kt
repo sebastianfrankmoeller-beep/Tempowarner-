@@ -2,21 +2,23 @@ package de.basti.speedwarner
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Kleines Geschwindigkeits-Fenster: große Zahl (km/h) und darunter das Limit.
- * Dunkel im Normalfall, rot bei Überschreitung.
+ * Schwebendes Geschwindigkeits-Fenster: große Zahl mit "km/h" darunter und rechts ein rundes
+ * Limit-Schild. Dunkle Glasfläche im Normalfall, rot bei Überschreitung.
  *
- * Die Größe lässt sich über [setScale] ändern (Faktor 0,6 bis 3,0). In der unteren rechten Ecke
- * ist ein kleiner Ziehgriff eingezeichnet, siehe [inGrip].
+ * Ein roter Schildrand heißt: Limit aus den Kartendaten erkannt. Ein grauer Rand heißt:
+ * Limit unbekannt, es gilt dein manuell eingestellter Wert.
+ *
+ * Die Größe lässt sich über [setScale] ändern (Faktor 0,6 bis 3,0). Unten rechts sind zwei
+ * kleine Ziehstriche als Griff eingezeichnet, siehe [inGrip].
  */
 class SpeedChip(context: Context) : LinearLayout(context) {
 
@@ -25,51 +27,68 @@ class SpeedChip(context: Context) : LinearLayout(context) {
         const val MAX_SCALE = 3.0f
     }
 
+    private val density = resources.displayMetrics.density
     private val tvSpeed = TextView(context)
-    private val tvSub = TextView(context)
+    private val tvCaption = TextView(context)
+    private val column = LinearLayout(context)
+    private val badge = LimitBadge(context)
     private val bg = GradientDrawable()
     private var lastOver: Boolean? = null
 
-    private val density = resources.displayMetrics.density
-    private val gripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99FFFFFF.toInt() }
-    private val gripPath = Path()
+    private val gripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0x73FFFFFF
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = 1.6f * density
+    }
 
     var chipScale = 1f
         private set
 
     init {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_HORIZONTAL
-
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
         background = bg
 
-        tvSpeed.setTextColor(Color.WHITE)
-        tvSpeed.typeface = Typeface.DEFAULT_BOLD
-        tvSpeed.gravity = Gravity.CENTER_HORIZONTAL
+        tvSpeed.setTextColor(0xFFFFFFFF.toInt())
+        tvSpeed.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        tvSpeed.includeFontPadding = false
+        tvSpeed.gravity = Gravity.START
 
-        tvSub.setTextColor(0xFFDDDDDD.toInt())
-        tvSub.gravity = Gravity.CENTER_HORIZONTAL
+        tvCaption.setTextColor(0xB3FFFFFF.toInt())
+        tvCaption.includeFontPadding = false
+        tvCaption.letterSpacing = 0.04f
 
-        addView(tvSpeed)
-        addView(tvSub)
+        column.orientation = VERTICAL
+        column.addView(tvSpeed)
+        column.addView(tvCaption)
+
+        addView(column, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+        addView(badge, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+
         setScale(1f)
-        update("--", "km/h", false)
+        update("--", "km/h", "–", false, false)
     }
 
-    /** Ändert die Größe von Zahl, Beschriftung und Abständen. */
+    /** Ändert die Größe von Zahl, Beschriftung, Schild und Abständen. */
     fun setScale(s: Float) {
         val scale = s.coerceIn(MIN_SCALE, MAX_SCALE)
         chipScale = scale
-        tvSpeed.textSize = 32f * scale
-        tvSub.textSize = 12f * scale
-        // Rechts und unten etwas mehr Platz, damit der Griff nichts überdeckt
+        tvSpeed.textSize = 38f * scale
+        tvSpeed.minWidth = (46 * density * scale).toInt()
+        tvCaption.textSize = 11f * scale
+        tvCaption.setPadding(0, (3 * density * scale).toInt(), 0, 0)
         setPadding(
-            (14 * density * scale).toInt(),
-            (8 * density * scale).toInt(),
+            (16 * density * scale).toInt(),
+            (10 * density * scale).toInt(),
             (14 * density * scale).toInt(),
             (12 * density * scale).toInt()
         )
-        bg.cornerRadius = 16 * density * scale
+        bg.cornerRadius = 24 * density * scale
+        badge.sizePx = (46 * density * scale).toInt()
+        val lp = badge.layoutParams as LayoutParams
+        lp.leftMargin = (14 * density * scale).toInt()
+        badge.layoutParams = lp
         invalidate()
     }
 
@@ -82,27 +101,84 @@ class SpeedChip(context: Context) : LinearLayout(context) {
         return x >= width - g && y >= height - g
     }
 
-    fun update(speed: String, sub: String, over: Boolean) {
+    /**
+     * @param speed Anzeige der Geschwindigkeit, z. B. "47"
+     * @param caption Beschriftung unter der Zahl, z. B. "km/h" oder "kein GPS"
+     * @param limitLabel Zahl im Schild, "∞" für "kein Limit"
+     * @param detected true, wenn das Limit aus Kartendaten erkannt wurde (roter Schildrand)
+     * @param over true bei Überschreitung (Fenster wird rot)
+     */
+    fun update(speed: String, caption: String, limitLabel: String, detected: Boolean, over: Boolean) {
         tvSpeed.text = speed
-        tvSub.text = sub
+        tvCaption.text = caption
+        badge.set(limitLabel, detected)
         if (over != lastOver) {
-            bg.setColor(if (over) 0xF0D32F2F.toInt() else 0xCC202020.toInt())
+            bg.setColor(if (over) 0xF2D92D20.toInt() else 0xD9111214.toInt())
+            bg.setStroke(
+                (1 * density).toInt().coerceAtLeast(1),
+                if (over) 0x59FFFFFF else 0x24FFFFFF
+            )
             lastOver = over
         }
     }
 
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
-        // kleines Dreieck unten rechts als Hinweis auf den Ziehgriff
-        val s = 10 * density
-        val m = 6 * density
+        // zwei kurze Diagonalstriche unten rechts als Hinweis auf den Ziehgriff
+        val s = 9 * density
+        val m = 10 * density
         val r = width - m
         val b = height - m
-        gripPath.reset()
-        gripPath.moveTo(r, b - s)
-        gripPath.lineTo(r, b)
-        gripPath.lineTo(r - s, b)
-        gripPath.close()
-        canvas.drawPath(gripPath, gripPaint)
+        canvas.drawLine(r - s, b, r, b - s, gripPaint)
+        canvas.drawLine(r - s * 0.45f, b, r, b - s * 0.45f, gripPaint)
+    }
+}
+
+/** Rundes Limit-Schild: weiße Scheibe, farbiger Rand, Zahl in der Mitte. */
+class LimitBadge(context: Context) : View(context) {
+
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        color = 0xFF111111.toInt()
+    }
+    private var label = "–"
+    private var detected = false
+
+    var sizePx: Int = (46 * resources.displayMetrics.density).toInt()
+        set(value) {
+            field = value
+            requestLayout()
+            invalidate()
+        }
+
+    fun set(newLabel: String, newDetected: Boolean) {
+        if (newLabel == label && newDetected == detected) return
+        label = newLabel
+        detected = newDetected
+        invalidate()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(sizePx, sizePx)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val s = sizePx.toFloat()
+        val c = s / 2
+        paint.style = Paint.Style.FILL
+        paint.color = 0xFFF7F7F7.toInt()
+        canvas.drawCircle(c, c, c, paint)
+
+        val ring = s * 0.12f
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ring
+        paint.color = if (detected) 0xFFE5392F.toInt() else 0xFF9AA0A6.toInt()
+        canvas.drawCircle(c, c, c - ring / 2, paint)
+
+        textPaint.textSize = s * (if (label.length >= 3) 0.30f else 0.40f)
+        val y = c - (textPaint.descent() + textPaint.ascent()) / 2
+        canvas.drawText(label, c, y, textPaint)
     }
 }

@@ -203,15 +203,10 @@ class SpeedService : Service(), LocationListener {
         // Geschwindigkeits-Fenster: über allen Apps außer Google Maps
         if (Prefs.chip(this) && Perms.canOverlay(this) && !mapsInFront) {
             val speedText = if (gpsFresh) Math.round(speedKmh).toString() else "--"
-            val sub = when {
-                !gpsFresh -> "kein GPS"
-                noLimit -> "km/h · kein Limit"
-                detected != null -> "km/h · Limit $limit"
-                auto -> "km/h · Limit $limit ?"
-                else -> "km/h · Limit $limit"
-            }
+            val caption = if (gpsFresh) "km/h" else "kein GPS"
+            val label = if (noLimit) "∞" else limit.toString()
             showChip()
-            chip?.update(speedText, sub, alarm)
+            chip?.update(speedText, caption, label, detected != null, alarm)
         } else {
             hideChip()
         }

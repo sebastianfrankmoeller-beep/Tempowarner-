@@ -12,6 +12,14 @@ import android.provider.Settings
 object Prefs {
     private fun sp(c: Context) = c.getSharedPreferences("speedwarner", Context.MODE_PRIVATE)
 
+    const val THEME_AUTO = 0
+    const val THEME_DARK = 1
+    const val THEME_LIGHT = 2
+
+    /** Darstellung: Automatisch (folgt dem System), Dunkel oder Hell. Standard: Dunkel. */
+    fun theme(c: Context): Int = sp(c).getInt("theme", THEME_DARK)
+    fun setTheme(c: Context, v: Int) = sp(c).edit().putInt("theme", v).apply()
+
     /** Manuelles Limit; bei aktiver Automatik der Rückfall, wenn die Straße unbekannt ist. */
     fun limit(c: Context): Int = sp(c).getInt("limit", 50)
     fun tolerance(c: Context): Int = sp(c).getInt("tolerance", 1)
