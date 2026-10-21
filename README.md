@@ -51,6 +51,13 @@ und sucht an jedem GPS-Punkt die Straße, die zu Position und Fahrtrichtung pass
 
 Kartendaten: © OpenStreetMap-Mitwirkende (ODbL).
 
+## Download
+
+Neueste Version direkt herunterladen (Link bleibt immer gleich):
+**https://github.com/sebastianfrankmoeller-beep/Tempowarner-/releases/latest/download/Tempowarner.apk**
+
+Jeder Push auf `main` baut die App und legt sie als neues Release ab.
+
 ## Auf GitHub bauen
 
 1. Bei jedem Push startet automatisch der Workflow **Build APK** (Reiter *Actions*).
