@@ -27,6 +27,7 @@ class MainActivity : Activity() {
     private lateinit var permLocation: PermRow
     private lateinit var permOverlay: PermRow
     private lateinit var permUsage: PermRow
+    private lateinit var permNotif: PermRow
 
     private val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
     private val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -148,6 +149,27 @@ class MainActivity : Activity() {
             ), 26
         )
 
+        // -------------------------------------------------------- Autostart
+        add(section("Autostart"), 8)
+        permNotif = PermRow("Benachrichtigungszugriff", "Nötig, um die Navigation von Google Maps zu erkennen") {
+            openNotificationAccess()
+        }
+        add(
+            card(
+                toggleRow(
+                    "Automatisch mit Google Maps starten",
+                    "Startet, sobald eine Navigation läuft, und beendet sich mit ihrem Ende. " +
+                        "Von Hand gestartete Sitzungen laufen weiter.",
+                    Prefs.autoMaps(this)
+                ) { on ->
+                    Prefs.setAutoMaps(this, on)
+                    if (on && !AutoStart.hasNotificationAccess(this)) openNotificationAccess()
+                    refresh()
+                },
+                permNotif.view
+            ), 26
+        )
+
         // --------------------------------------------------- Berechtigungen
         add(section("Berechtigungen"), 8)
         permLocation = PermRow("Standort", "Für die GPS-Geschwindigkeit") {
@@ -197,6 +219,7 @@ class MainActivity : Activity() {
         permLocation.set(loc, false)
         permOverlay.set(ovl, false)
         permUsage.set(use, true)
+        permNotif.set(AutoStart.hasNotificationAccess(this), !Prefs.autoMaps(this))
 
         val running = SpeedService.running
         val ready = loc && ovl
@@ -214,6 +237,7 @@ class MainActivity : Activity() {
             else -> "Einrichtung nötig"
         }
         statusSub.text = when {
+            running && SpeedService.autoSession -> "Automatisch gestartet mit Google Maps"
             running -> "Tempo wird überwacht"
             ready -> "Starte den Warner, bevor du losfährst"
             else -> "Erlaube unten Standort und Anzeige über anderen Apps"
@@ -234,6 +258,14 @@ class MainActivity : Activity() {
 
         btnTest.isEnabled = running
         btnTest.alpha = if (running) 1f else 0.4f
+    }
+
+    private fun openNotificationAccess() {
+        try {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        } catch (_: Exception) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
     }
 
     // ------------------------------------------------------------ Bausteine

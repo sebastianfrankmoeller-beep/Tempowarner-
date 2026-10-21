@@ -41,14 +41,28 @@ class SpeedService : Service(), LocationListener {
         const val ACTION_STOP = "de.basti.speedwarner.STOP"
         const val ACTION_TEST = "de.basti.speedwarner.TEST"
         const val ACTION_RESET_CHIP = "de.basti.speedwarner.RESET_CHIP"
+        /** Start durch den Autostart mit Google Maps (endet mit der Navigation). */
+        const val ACTION_AUTO_START = "de.basti.speedwarner.AUTO_START"
+        /** Start über die Nachfrage-Benachrichtigung "Tempowarner starten?". */
+        const val EXTRA_FROM_PROMPT = "from_prompt"
 
         private const val CHANNEL_ID = "speedwarner_status"
         private const val NOTIF_ID = 1
         private const val MAPS_PACKAGE = "com.google.android.apps.maps"
         private const val GPS_TIMEOUT_MS = 5_000L
+        /** Kommt nach einem Autostart so lange kein GPS-Punkt, fehlt vermutlich der Standortzugriff. */
+        private const val NO_FIX_TIMEOUT_MS = 45_000L
 
         @Volatile
         var running = false
+
+        /** true, wenn die laufende Sitzung automatisch mit Google Maps gestartet wurde. */
+        @Volatile
+        var autoSession = false
+
+        /** Laufende Instanz (gleicher Prozess), damit der Autostart sie beenden kann. */
+        @Volatile
+        var instance: SpeedService? = null
     }
 
     private lateinit var nm: NotificationManager
@@ -75,6 +89,14 @@ class SpeedService : Service(), LocationListener {
 
     private var lastNotifText = ""
 
+    /** Wächter nach Autostart: ohne GPS-Punkt stoppen und stattdessen nachfragen. */
+    private val noFixCheck = Runnable {
+        if (started && autoSession && lastFixMs == 0L) {
+            AutoStart.showPrompt(this)
+            stopSelf()
+        }
+    }
+
     private val tick = object : Runnable {
         override fun run() {
             pollForegroundApp()
@@ -88,6 +110,7 @@ class SpeedService : Service(), LocationListener {
         nm = getSystemService(NotificationManager::class.java)
         wm = getSystemService(WindowManager::class.java)
         lm = getSystemService(LocationManager::class.java)
+        instance = this
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Tempowarner", NotificationManager.IMPORTANCE_LOW)
         )
@@ -113,8 +136,10 @@ class SpeedService : Service(), LocationListener {
         }
         if (started) return START_STICKY
 
+        val auto = intent?.action == ACTION_AUTO_START
+        val fromPrompt = intent?.getBooleanExtra(EXTRA_FROM_PROMPT, false) == true
+        val n = buildNotification("Warte auf GPS …")
         try {
-            val n = buildNotification("Warte auf GPS …")
             if (Build.VERSION.SDK_INT >= 29) {
                 startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
             } else {
@@ -122,19 +147,50 @@ class SpeedService : Service(), LocationListener {
             }
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, this, Looper.getMainLooper())
         } catch (e: Exception) {
-            // z. B. fehlende Berechtigung oder Start aus dem Hintergrund nicht erlaubt
-            stopSelf()
+            // z. B. fehlende Berechtigung oder kein Standortzugriff beim Start aus dem Hintergrund
+            abortStart(n)
+            if (auto && !fromPrompt) AutoStart.showPrompt(this)
             return START_NOT_STICKY
         }
 
         started = true
         running = true
+        autoSession = auto
+        AutoStart.cancelPrompt(this)
+        if (auto && !fromPrompt) handler.postDelayed(noFixCheck, NO_FIX_TIMEOUT_MS)
         handler.post(tick)
         return START_STICKY
     }
 
+    /**
+     * Beendet einen fehlgeschlagenen Start sauber. Nach startForegroundService() verlangt Android
+     * zwingend einen Aufruf von startForeground(), sonst wird die App beendet. Ab Android 14 geht das
+     * ohne Standortrecht nur mit dem Typ "shortService".
+     */
+    private fun abortStart(n: Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE)
+            } else {
+                startForeground(NOTIF_ID, n)
+            }
+        } catch (_: Exception) {
+        }
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (_: Exception) {
+        }
+        stopSelf()
+    }
+
+    /** Vom Autostart aufgerufen, wenn die Navigation endet. Manuelle Sitzungen bleiben aktiv. */
+    fun endAutoSession() {
+        if (started && autoSession) stopSelf()
+    }
+
     override fun onDestroy() {
         handler.removeCallbacks(tick)
+        handler.removeCallbacks(noFixCheck)
         try {
             lm.removeUpdates(this)
         } catch (_: Exception) {
@@ -144,6 +200,8 @@ class SpeedService : Service(), LocationListener {
         hideChip()
         started = false
         running = false
+        autoSession = false
+        if (instance === this) instance = null
         super.onDestroy()
     }
 

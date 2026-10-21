@@ -24,6 +24,10 @@ object Prefs {
     fun limit(c: Context): Int = sp(c).getInt("limit", 50)
     fun tolerance(c: Context): Int = sp(c).getInt("tolerance", 1)
 
+    /** Warner automatisch starten, solange in Google Maps eine Navigation läuft (Standard: aus). */
+    fun autoMaps(c: Context): Boolean = sp(c).getBoolean("autoMaps", false)
+    fun setAutoMaps(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoMaps", v).apply()
+
     /** Tempolimit automatisch aus OpenStreetMap erkennen (Standard: an). */
     fun auto(c: Context): Boolean = sp(c).getBoolean("auto", true)
 

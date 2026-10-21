@@ -18,6 +18,23 @@ des Limits einen **roten, pulsierenden Leuchtrahmen** am Bildschirmrand zeigt �
 - Im Fenster zeigt ein rundes Limit-Schild das Limit: **roter Rand** = aus Kartendaten erkannt,
   **grauer Rand** = unbekannt, es gilt dein manuelles Limit; **∞** = ausdrücklich kein Limit.
 
+## Autostart mit Google Maps
+
+Mit dem Schalter *Autostart → Automatisch mit Google Maps starten* startet der Warner von selbst,
+sobald Google Maps eine Navigation zeigt, und beendet sich, wenn die Navigation endet.
+
+- Erkannt wird die laufende Navigations-Benachrichtigung von Google Maps. Dafür braucht die App den
+  **Benachrichtigungszugriff** (Knopf „Erlauben“ in der App). Gelesen werden nur Benachrichtigungen
+  von Google Maps, der Rest wird ignoriert.
+- Von Hand gestartete Sitzungen laufen nach dem Navigationsende weiter.
+- Stoppst du den Warner während einer Navigation, startet er erst bei der nächsten Navigation wieder.
+- Lässt Android den Start aus dem Hintergrund nicht zu, erscheint stattdessen die Benachrichtigung
+  **„Tempowarner starten?“**. Antippen startet den Warner, er endet dann ebenfalls mit der Navigation.
+- Kommt nach einem automatischen Start 45 Sekunden lang kein GPS-Signal an, fehlt vermutlich der
+  Standortzugriff im Hintergrund. Dann stoppt der Warner und fragt ebenfalls per Benachrichtigung nach.
+- Auch der Benachrichtigungszugriff kann bei aus dem Browser installierten Apps zunächst gesperrt
+  sein (siehe „Eingeschränkte Einstellungen zulassen“ unten).
+
 ## Automatische Limit-Erkennung
 
 Die App lädt per Internet die Straßen rund um deine Position aus **OpenStreetMap** (Overpass-API)
@@ -53,7 +70,8 @@ Versionsnummer mit jedem Lauf steigt, lässt sich eine neue APK einfach über di
 
 Hinweise:
 
-- Bei aus dem Browser installierten Apps blockiert Android 13+ diese beiden Sonderrechte zunächst.
+- Bei aus dem Browser installierten Apps blockiert Android 13+ diese Sonderrechte (auch den
+  Benachrichtigungszugriff) zunächst.
   Dann: *Einstellungen → Apps → Tempowarner → ⋮ (oben rechts) → Eingeschränkte Einstellungen zulassen*.
 - Damit der Dienst zuverlässig weiterläuft: *Einstellungen → Apps → Tempowarner → Akku → Unbeschränkt*.
 - Die GPS-Geschwindigkeit ist genauer als der Tacho vieler Autos und weicht daher oft nach unten ab.
@@ -65,6 +83,8 @@ Hinweise:
 |---|---|
 | `SpeedService.kt` | Vordergrunddienst: GPS, Schwellenwert, Overlay, Maps-Erkennung, Benachrichtigung |
 | `LimitProvider.kt` | Tempolimit aus OpenStreetMap: Abruf, Zwischenspeicher, Straßenzuordnung |
+| `MapsNavListener.kt` | Autostart: erkennt Beginn und Ende der Google-Maps-Navigation |
+| `AutoStart.kt` | Autostart-Helfer und Nachfrage-Benachrichtigung „Tempowarner starten?“ |
 | `GlowView.kt` | Zeichnet den roten Leuchtrahmen |
 | `MainActivity.kt` | Einstellungen, Berechtigungen, Start/Stopp |
 | `Util.kt` | Gespeicherte Einstellungen, Berechtigungsprüfungen |
